@@ -9,14 +9,24 @@ Original file is located at
 # Proyek Machine Learning - Analisis Performa Akademik Siswa
 Notebook ini dibuat untuk memprediksi kelulusan siswa berdasarkan fitur demografis dan sosial, serta memahami fitur mana yang paling berpengaruh terhadap performa akademik siswa. Dataset diambil dari Kaggle: [Students Performance](https://www.kaggle.com/datasets/spscientist/students-performance-in-exams)
 
-## Load Data
-
-Pada bagian ini, dataset StudentsPerformance.csv dibaca menggunakan library pandas, lalu lima baris pertama dari dataset ditampilkan menggunakan df.head(). Ini bertujuan untuk mendapatkan gambaran awal tentang struktur dan isi data sebelum dilakukan analisis lebih lanjut.
+## Import Library
 """
 
 import pandas as pd
-import seaborn as sns
+import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+from sklearn.linear_model import LogisticRegression, LinearRegression
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, mean_squared_error, confusion_matrix
+from math import sqrt
+
+"""## Load Data
+
+Pada bagian ini, dataset StudentsPerformance.csv dibaca menggunakan library pandas, lalu lima baris pertama dari dataset ditampilkan menggunakan df.head(). Ini bertujuan untuk mendapatkan gambaran awal tentang struktur dan isi data sebelum dilakukan analisis lebih lanjut.
+"""
 
 df = pd.read_csv("StudentsPerformance.csv")
 df.head()
@@ -149,134 +159,266 @@ Boxplot menunjukkan bahwa:
 - Kursus persiapan ujian memberikan dampak positif terhadap skor matematika.
 
 ## Data Preparation
-- Label encoding pada kolom kategorikal
-- Menambahkan kolom target kelulusan (nilai >= 65 dianggap lulus)
-- Membagi data menjadi train-test set
+- Menambahkan kolom **target kelulusan** untuk setiap mata pelajaran (`math_pass`, `reading_pass`, `writing_pass`), di mana siswa dianggap **lulus jika nilainya ≥ 65**.
+- Melakukan **label encoding** pada fitur kategorikal: `gender`, `race/ethnicity`, `parental level of education`, `lunch`, dan `test preparation course`.
+- Menentukan fitur (`X`) dengan menghapus kolom nilai asli (`math score`, `reading score`, `writing score`) dan kolom target kelulusan dari dataset.
 """
 
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
-
-# Membuat label kelulusan untuk masing-masing skor (threshold: 65)
+# Buat kolom pass/fail berdasarkan threshold 65
 df['math_pass'] = (df['math score'] >= 65).astype(int)
 df['reading_pass'] = (df['reading score'] >= 65).astype(int)
 df['writing_pass'] = (df['writing score'] >= 65).astype(int)
 
-# Encoding fitur kategorikal (One-Hot Encoding)
-df_encoded = pd.get_dummies(df.drop(columns=['math score', 'reading score', 'writing score']))
+# Encode fitur kategorikal
+label_cols = ['gender', 'race/ethnicity', 'parental level of education', 'lunch', 'test preparation course']
+le = LabelEncoder()
+for col in label_cols:
+    df[col] = le.fit_transform(df[col])
 
-# Fitur (X) dan Target (y) untuk prediksi kelulusan matematika
-X = df_encoded.drop(columns=['math_pass', 'reading_pass', 'writing_pass'])
-y_math = df_encoded['math_pass']
+# Fitur umum
+X = df.drop(columns=[
+    'math score', 'reading score', 'writing score',
+    'math_pass', 'reading_pass', 'writing_pass'
+])
 
-# Split data: 80% training, 20% testing
-X_train, X_test, y_train, y_test = train_test_split(X, y_math, test_size=0.2, random_state=42)
+"""### Data Splitting
+
+- Menentukan **target klasifikasi** untuk kelulusan:
+  - `math_pass`: 1 jika lulus matematika (nilai ≥ 65), 0 jika tidak.
+  - `reading_pass`: 1 jika lulus membaca.
+  - `writing_pass`: 1 jika lulus menulis.
+
+- Menentukan **target regresi** untuk memprediksi nilai aktual:
+  - `math score`, `reading score`, dan `writing score`.
+
+- Melakukan **pembagian data (train-test split)** secara terpisah untuk:
+  - **Klasifikasi** kelulusan pada masing-masing mata pelajaran.
+  - **Regresi** prediksi nilai untuk masing-masing mata pelajaran.
+
+> Pembagian data dilakukan dengan rasio 80:20 dan `random_state=42` untuk memastikan replikasi hasil.
+"""
+
+# Target klasifikasi
+y_math_pass = df['math_pass']
+y_reading_pass = df['reading_pass']
+y_writing_pass = df['writing_pass']
+
+# Target regresi
+y_math_score = df['math score']
+y_reading_score = df['reading score']
+y_writing_score = df['writing score']
+
+# Split data
+X_train_math, X_test_math, y_train_math, y_test_math = train_test_split(X, y_math_pass, test_size=0.2, random_state=42)
+X_train_reading, X_test_reading, y_train_reading, y_test_reading = train_test_split(X, y_reading_pass, test_size=0.2, random_state=42)
+X_train_writing, X_test_writing, y_train_writing, y_test_writing = train_test_split(X, y_writing_pass, test_size=0.2, random_state=42)
+
+X_train_math_reg, X_test_math_reg, y_train_math_reg, y_test_math_reg = train_test_split(X, y_math_score, test_size=0.2, random_state=42)
+X_train_reading_reg, X_test_reading_reg, y_train_reading_reg, y_test_reading_reg = train_test_split(X, y_reading_score, test_size=0.2, random_state=42)
+X_train_writing_reg, X_test_writing_reg, y_train_writing_reg, y_test_writing_reg = train_test_split(X, y_writing_score, test_size=0.2, random_state=42)
 
 """## Modeling
 
-#### Logistic Regression (Klasifikasi)
-Memprediksi apakah siswa lulus berdasarkan fitur input.
-
-#### Linear Regression (Regresi)
-Untuk mengetahui fitur yang paling mempengaruhi nilai akhir siswa.
-
 ### Penjelasan Lengkap Modeling
 
-Kami menggunakan dua model:
+### Model Klasifikasi: Logistic Regression
 
-1. **Logistic Regression**: Digunakan untuk mengklasifikasikan apakah siswa lulus atau tidak.
-   - Target dikategorikan menjadi lulus (nilai >= 60) dan tidak lulus.
-   - Model ini bekerja dengan memodelkan probabilitas dari kelas target.
-   - Parameter utama: `C` untuk regularisasi dan `solver` untuk algoritma optimisasi.
+Kami menggunakan **Logistic Regression** untuk memprediksi kelulusan siswa pada tiga mata pelajaran: matematika, membaca, dan menulis.
 
-2. **Linear Regression**: Digunakan untuk memprediksi nilai matematika berdasarkan fitur lainnya.
-   - Model ini mempelajari hubungan linier antara variabel independen dan nilai target.
-   - Semakin rendah nilai error-nya (seperti RMSE), semakin akurat model tersebut.
+- **Tujuan**: Mengklasifikasikan apakah seorang siswa **lulus (nilai ≥ 65)** atau tidak.
+- Model ini memodelkan probabilitas keanggotaan kelas (pass/fail) berdasarkan fitur input.
+- Parameter:
+  - `max_iter=1000`: Jumlah iterasi maksimum untuk konvergensi.
+  - Default solver (`lbfgs`) digunakan.
+
+Model dilatih dan diuji secara terpisah untuk setiap mata pelajaran:
+- `clf_math` untuk matematika
+- `clf_reading` untuk membaca
+- `clf_writing` untuk menulis
+
+Evaluasi dilakukan menggunakan metrik klasifikasi seperti **Accuracy**, **Precision**, **Recall**, dan **F1 Score**, serta visualisasi **Confusion Matrix**.
 """
 
-from sklearn.linear_model import LogisticRegression, LinearRegression
+# Logistic Regression: math pass
+clf_math = LogisticRegression(max_iter=1000)
+clf_math.fit(X_train_math, y_train_math)
+y_pred_math = clf_math.predict(X_test_math)
 
-# Logistic Regression
-log_reg = LogisticRegression(max_iter=1000)
-log_reg.fit(X_train, y_train)
-y_pred = log_reg.predict(X_test)
+# Logistic Regression: reading pass
+clf_reading = LogisticRegression(max_iter=1000)
+clf_reading.fit(X_train_reading, y_train_reading)
+y_pred_reading = clf_reading.predict(X_test_reading)
 
-# Linear Regression
-y_score = df['math score']
-X_train_reg, X_test_reg, y_train_reg, y_test_reg = train_test_split(X, y_score, test_size=0.2, random_state=42)
-lin_reg = LinearRegression()
-lin_reg.fit(X_train_reg, y_train_reg)
-y_pred_reg = lin_reg.predict(X_test_reg)
+# Logistic Regression: writing pass
+clf_writing = LogisticRegression(max_iter=1000)
+clf_writing.fit(X_train_writing, y_train_writing)
+y_pred_writing = clf_writing.predict(X_test_writing)
 
-"""### Model 1: Logistic Regression
-Logistic Regression digunakan untuk klasifikasi apakah siswa lulus atau tidak berdasarkan skor nilai minimum tertentu.
-- **Cara Kerja**: Menghitung probabilitas kelas dengan fungsi logistik (sigmoid).
-- **Parameter**: Default scikit-learn (`penalty='l2'`, `solver='lbfgs'`, `C=1.0`).
+"""### Model Regresi: Linear Regression
 
-### Model 2: Linear Regression
-Linear Regression digunakan untuk memprediksi skor ujian berdasarkan fitur demografis dan sosial.
-- **Cara Kerja**: Mencari garis terbaik (hyperplane) yang meminimalkan error kuadrat antara nilai prediksi dan nilai aktual.
-- **Parameter**: Default scikit-learn (`fit_intercept=True`).
+Kami menggunakan **Linear Regression** untuk memprediksi nilai aktual siswa pada tiga mata pelajaran.
 
-## Evaluation
+- **Tujuan**: Memodelkan hubungan linier antara fitur input dan nilai skor.
+- Model ini berusaha meminimalkan selisih antara nilai sebenarnya dan nilai prediksi.
+- Evaluasi menggunakan **Root Mean Squared Error (RMSE)** serta visualisasi **Predicted vs Actual Plot**.
 
-### Klasifikasi
-Metrik: Accuracy, Precision, Recall, F1-score
+Model dilatih dan diuji untuk setiap target skor:
+- `reg_math` memprediksi nilai matematika
+- `reg_reading` memprediksi nilai membaca
+- `reg_writing` memprediksi nilai menulis
 
-### Regresi
-Metrik: RMSE
-
-### Metrik Evaluasi
-- **Accuracy**: Digunakan untuk model klasifikasi. Mengukur seberapa banyak prediksi yang sesuai dengan label aktual.
-- **RMSE (Root Mean Square Error)**: Digunakan untuk model regresi. Mengukur rata-rata kesalahan prediksi terhadap nilai aktual.
+> Semakin kecil nilai RMSE, semakin akurat prediksi model terhadap nilai siswa.
 """
 
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, mean_squared_error
-from math import sqrt
+# Linear Regression: math score
+reg_math = LinearRegression()
+reg_math.fit(X_train_math_reg, y_train_math_reg)
+y_pred_math_reg = reg_math.predict(X_test_math_reg)
 
-print("=== Classification ===")
-print("Accuracy:", accuracy_score(y_test, y_pred))
-print("Precision:", precision_score(y_test, y_pred))
-print("Recall:", recall_score(y_test, y_pred))
-print("F1 Score:", f1_score(y_test, y_pred))
+# Linear Regression: reading score
+reg_reading = LinearRegression()
+reg_reading.fit(X_train_reading_reg, y_train_reading_reg)
+y_pred_reading_reg = reg_reading.predict(X_test_reading_reg)
 
-print("\n=== Regression ===")
-rmse = sqrt(mean_squared_error(y_test_reg, y_pred_reg))
-print("RMSE:", rmse)
+# Linear Regression: writing score
+reg_writing = LinearRegression()
+reg_writing.fit(X_train_writing_reg, y_train_writing_reg)
+y_pred_writing_reg = reg_writing.predict(X_test_writing_reg)
 
-"""#### Interpretasi Hasil dan Keterkaitan dengan Tujuan Bisnis
+"""## Evaluation
 
-**Problem Statement 1:**  
+### 📊 Metrik Evaluasi
+
+- **Accuracy**: Digunakan untuk model klasifikasi. Mengukur seberapa banyak prediksi yang sesuai dengan label aktual. Nilai ini menunjukkan persentase prediksi yang benar dari seluruh dataset.
+  
+- **RMSE (Root Mean Square Error)**: Digunakan untuk model regresi. Mengukur rata-rata kesalahan prediksi terhadap nilai aktual. Semakin kecil nilai RMSE, semakin baik model dalam memprediksi nilai yang sebenarnya.
+
+#### Fungsi Evaluasi:
+1. **evaluate_classification**:
+   - Menghitung metrik klasifikasi seperti **Accuracy**, **Precision**, **Recall**, dan **F1 Score**.
+   - Menampilkan **Confusion Matrix** sebagai visualisasi performa model.
+
+2. **evaluate_regression**:
+   - Menghitung **RMSE** untuk menilai akurasi prediksi nilai.
+   - Menampilkan **scatter plot** yang membandingkan **Actual vs Predicted** nilai, serta garis referensi untuk menunjukkan prediksi yang ideal.
+"""
+
+def evaluate_classification(y_true, y_pred, label):
+    print(f"\n=== Classification Report: {label} ===")
+    print("Accuracy :", accuracy_score(y_true, y_pred))
+    print("Precision:", precision_score(y_true, y_pred))
+    print("Recall   :", recall_score(y_true, y_pred))
+    print("F1 Score :", f1_score(y_true, y_pred))
+
+    cm = confusion_matrix(y_true, y_pred)
+    plt.figure(figsize=(4,3))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+    plt.title(f"Confusion Matrix - {label}")
+    plt.xlabel("Predicted")
+    plt.ylabel("Actual")
+    plt.tight_layout()
+    plt.show()
+
+def evaluate_regression(y_true, y_pred, label):
+    rmse = sqrt(mean_squared_error(y_true, y_pred))
+    print(f"\n=== Regression Report: {label} ===")
+    print("RMSE:", rmse)
+
+    plt.figure(figsize=(6,4))
+    sns.scatterplot(x=y_true, y=y_pred)
+    plt.xlabel("Actual Score")
+    plt.ylabel("Predicted Score")
+    plt.title(f"Regression: {label} - Predicted vs Actual")
+    plt.plot([min(y_true), max(y_true)], [min(y_true), max(y_true)], 'r--')
+    plt.tight_layout()
+    plt.show()
+
+"""Evaluasi Model Klasifikasi
+
+
+"""
+
+# Logistic Regression: Evaluasi Math Pass
+evaluate_classification(y_test_math, y_pred_math, "Math Pass")
+
+# Logistic Regression: Evaluasi Reading Pass
+evaluate_classification(y_test_reading, y_pred_reading, "Reading Pass")
+
+# Logistic Regression: Evaluasi Writing Pass
+evaluate_classification(y_test_writing, y_pred_writing, "Writing Pass")
+
+"""Evaluasi Model Regresi"""
+
+# Linear Regression: Evaluasi Math Score
+evaluate_regression(y_test_math_reg, y_pred_math_reg, "Math Score")
+
+# Linear Regression: Evaluasi Reading Score
+evaluate_regression(y_test_reading_reg, y_pred_reading_reg, "Reading Score")
+
+# Linear Regression: Evaluasi Writing Score
+evaluate_regression(y_test_writing_reg, y_pred_writing_reg, "Writing Score")
+
+"""### **Interpretasi Hasil dan Keterkaitan dengan Tujuan Bisnis**
+
+#### **Problem Statement 1:**  
 Bagaimana cara memprediksi apakah seorang siswa akan lulus mata pelajaran matematika, membaca, dan menulis?
 
-**Goal 1:**  
+#### **Goal 1:**  
 Mengembangkan model klasifikasi untuk memprediksi kelulusan siswa berdasarkan fitur demografis dan sosial.
 
-**Hasil & Interpretasi:**  
+#### **Hasil & Interpretasi:**  
 Model klasifikasi yang digunakan (Logistic Regression) berhasil memberikan hasil sebagai berikut:
 
-- **Accuracy:** 66%  
-- **Precision:** 65.1%  
-- **Recall:** 77.4%  
-- **F1 Score:** 70.7%  
+- **Math Pass**:
+  - **Accuracy:** 65.5%  
+  - **Precision:** 64.8%  
+  - **Recall:** 76.4%  
+  - **F1 Score:** 70.1%  
 
-Hasil ini menunjukkan bahwa model cukup baik dalam mengidentifikasi siswa yang akan lulus. Nilai **recall** yang tinggi (77%) mengindikasikan bahwa sebagian besar siswa yang benar-benar lulus berhasil diprediksi dengan tepat. Namun, **precision** yang sedikit lebih rendah menunjukkan bahwa masih ada siswa yang diprediksi akan lulus namun sebenarnya tidak.
+  Hasil ini menunjukkan bahwa model cukup baik dalam mengidentifikasi siswa yang akan lulus mata pelajaran matematika. Nilai **recall** yang tinggi (76.4%) mengindikasikan bahwa sebagian besar siswa yang benar-benar lulus dapat diprediksi dengan tepat. Namun, **precision** yang sedikit lebih rendah menunjukkan bahwa ada sebagian siswa yang diprediksi lulus namun sebenarnya tidak.
 
-Model ini dapat dimanfaatkan oleh sekolah untuk mengidentifikasi siswa yang kemungkinan besar akan gagal lebih awal, sehingga dapat diberikan intervensi atau dukungan tambahan.
+- **Reading Pass**:
+  - **Accuracy:** 62%  
+  - **Precision:** 64.9%  
+  - **Recall:** 80.99%  
+  - **F1 Score:** 72.1%  
+
+  Model ini berhasil memprediksi kelulusan dalam mata pelajaran membaca dengan cukup baik, terutama dalam hal **recall**, yang menunjukkan kemampuannya dalam mengidentifikasi siswa yang akan lulus. Namun, ada beberapa kesalahan prediksi dengan **precision** yang lebih rendah.
+
+- **Writing Pass**:
+  - **Accuracy:** 67%  
+  - **Precision:** 68.4%  
+  - **Recall:** 80.17%  
+  - **F1 Score:** 73.8%  
+
+  Untuk kelulusan dalam mata pelajaran menulis, model menunjukkan hasil yang baik dengan **recall** yang tinggi (80.17%), mengindikasikan bahwa sebagian besar siswa yang benar-benar lulus berhasil diprediksi.
+
+Secara keseluruhan, model ini dapat dimanfaatkan oleh sekolah untuk mengidentifikasi siswa yang kemungkinan besar akan gagal lebih awal, sehingga dapat diberikan intervensi atau dukungan tambahan.
 
 ---
 
-**Problem Statement 2:**  
+#### **Problem Statement 2:**  
 Fitur demografis dan sosial apa yang paling memengaruhi performa akademik siswa?
 
-**Goal 2:**  
+#### **Goal 2:**  
 Mengetahui fitur demografis dan sosial yang paling memengaruhi performa akademik siswa.
 
-**Hasil & Interpretasi:**  
+#### **Hasil & Interpretasi:**  
 Berdasarkan analisis multivariat dan korelasi, ditemukan bahwa:
 
 - Terdapat korelasi yang kuat antara skor membaca dan menulis.
 - Fitur **jenis kelamin**, **tipe makan siang**, dan **program persiapan ujian** menunjukkan pengaruh yang jelas terhadap skor akademik, terutama matematika.
 
-Dalam model regresi untuk prediksi nilai matematika, didapatkan hasil **RMSE sebesar 14.16**. Artinya, rata-rata kesalahan prediksi skor matematika adalah sekitar 14 poin. Ini menunjukkan bahwa model memiliki akurasi yang moderat, dan bisa dikembangkan lebih lanjut dengan menambahkan fitur yang lebih relevan.
+Dalam model regresi untuk prediksi nilai matematika, didapatkan hasil **RMSE sebesar 14.24**. Artinya, rata-rata kesalahan prediksi skor matematika adalah sekitar 14 poin.
+
+Selain itu, model regresi untuk prediksi skor membaca dan menulis menghasilkan **RMSE** sebagai berikut:
+
+- **Reading Score RMSE**: 14.02  
+- **Writing Score RMSE**: 13.88  
+
+Ini menunjukkan bahwa model regresi memiliki akurasi yang moderat, dan masih ada ruang untuk peningkatan dengan menambahkan fitur atau memperbaiki model.
+
+---
+
+Dengan hasil evaluasi ini, sekolah dapat mengetahui faktor-faktor yang paling berpengaruh terhadap kelulusan dan skor akademik siswa serta mengambil tindakan yang tepat untuk meningkatkan performa siswa.
 """

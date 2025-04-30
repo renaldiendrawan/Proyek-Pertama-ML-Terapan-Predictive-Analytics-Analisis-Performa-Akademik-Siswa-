@@ -51,11 +51,13 @@ Dalam dunia pendidikan, pemahaman terhadap faktor-faktor yang memengaruhi perfor
 
 ## 🧹 Data Preparation
 
-- Encoding fitur kategorikal (One-hot encoding)
-- Membuat label klasifikasi kelulusan (threshold 65)
-- Split data: 80% training, 20% testing
-
-> Tujuan: memastikan data siap untuk proses machine learning dan evaluasi model.
+1. Menambahkan kolom target klasifikasi kelulusan (`math_pass`, `reading_pass`, `writing_pass`) berdasarkan threshold nilai ≥ 65.
+2. Melakukan label encoding pada fitur kategorikal: `gender`, `race/ethnicity`, `parental level of education`, `lunch`, `test preparation course`.
+3. Menentukan fitur prediktor (`X`) dengan menghapus kolom nilai asli dan label kelulusan.
+4. Melakukan pembagian data (train-test split) secara terpisah:
+   - Untuk klasifikasi (`math_pass`, `reading_pass`, `writing_pass`)
+   - Untuk regresi (`math score`, `reading score`, `writing score`)
+   - Rasio pembagian: 80:20 dengan `random_state=42`
 
 ---
 
@@ -63,8 +65,8 @@ Dalam dunia pendidikan, pemahaman terhadap faktor-faktor yang memengaruhi perfor
 
 ### Model 1: Logistic Regression (Klasifikasi)
 - **Cara kerja**: Mengestimasi probabilitas kelulusan berdasarkan fungsi logit.
-- **Parameter**: `max_iter=1000` (default lainnya digunakan)
-- **Output**: Prediksi kelulusan (lulus/gagal) untuk setiap mata pelajaran.
+- **Parameter**: `max_iter=1000`
+- **Output**: Prediksi kelulusan (1 = lulus, 0 = tidak lulus) untuk setiap mata pelajaran.
 
 ### Model 2: Linear Regression (Regresi)
 - **Cara kerja**: Mencari hubungan linier antara fitur dan skor ujian.
@@ -76,23 +78,61 @@ Dalam dunia pendidikan, pemahaman terhadap faktor-faktor yang memengaruhi perfor
 ## ✅ Evaluation
 
 ### Klasifikasi
-- **Metrik**: Accuracy, Precision, Recall, F1-score
-- **Interpretasi**:
-  - Accuracy: seberapa banyak prediksi yang tepat
-  - Precision: ketepatan prediksi kelulusan
-  - Recall: kemampuan model mendeteksi siswa yang benar-benar lulus
-  - F1: rata-rata harmonis antara precision dan recall
+**Metrik yang digunakan**:  
+- **Accuracy**: Mengukur seberapa banyak prediksi yang benar dari seluruh data.  
+- **Precision**: Ketepatan model dalam memprediksi kelulusan.  
+- **Recall**: Kemampuan model dalam mendeteksi siswa yang benar-benar lulus.  
+- **F1-score**: Rata-rata harmonis dari precision dan recall.
 
-**Hasil**:  
-Model memberikan hasil baik, dengan accuracy berkisar di atas 66% dan recall cukup tinggi (~77%) menunjukkan model efektif mengenali siswa yang akan lulus.
+**Hasil Evaluasi Model Klasifikasi:**
+
+- **Matematika**
+  - Accuracy: **0.655**
+  - Precision: **0.648**
+  - Recall: **0.764**
+  - F1 Score: **0.701**
+
+- **Membaca**
+  - Accuracy: **0.620**
+  - Precision: **0.649**
+  - Recall: **0.810**
+  - F1 Score: **0.721**
+
+- **Menulis**
+  - Accuracy: **0.670**
+  - Precision: **0.684**
+  - Recall: **0.802**
+  - F1 Score: **0.738**
+
+> Hasil ini menunjukkan bahwa model cukup efektif dalam mendeteksi siswa yang akan lulus, terutama dengan recall tinggi di semua mata pelajaran.
+
+---
 
 ### Regresi
-- **Metrik**: RMSE (Root Mean Squared Error)
-- **Interpretasi**: Rata-rata kesalahan prediksi nilai siswa.
+**Metrik yang digunakan**:  
+- **RMSE (Root Mean Squared Error)**: Mengukur rata-rata kesalahan prediksi terhadap nilai aktual. Semakin kecil nilai RMSE, semakin akurat model.
 
-**Hasil**:
-- RMSE Matematika: ~14.16
-- RMSE Membaca: ~11
-- RMSE Menulis: ~10
+**Hasil Evaluasi Model Regresi:**
 
-Model regresi memiliki performa yang cukup baik untuk memperkirakan skor siswa.
+- **Matematika**: RMSE **14.24**
+- **Membaca**: RMSE **14.02**
+- **Menulis**: RMSE **13.88**
+
+> Model regresi memiliki performa yang moderat, dengan tingkat kesalahan prediksi berada di kisaran 13–14 poin.
+
+---
+
+### 🎯 Kesimpulan
+
+Berdasarkan hasil evaluasi:
+
+- Model klasifikasi menunjukkan performa cukup baik dengan F1-score > 0.70 untuk semua mata pelajaran, menandakan efektivitas model dalam mengidentifikasi siswa yang akan lulus.
+- Meskipun RMSE pada model regresi cukup tinggi (sekitar 14), model masih mampu memberikan estimasi kasar terhadap nilai ujian siswa.
+
+**Kesimpulan terhadap Business Understanding:**
+- **Problem statement pertama** telah dijawab dengan baik: model klasifikasi mampu memprediksi kelulusan siswa dengan cukup akurat.
+- **Problem statement kedua** didukung oleh model regresi yang memungkinkan analisis lebih dalam terhadap pengaruh fitur terhadap nilai.
+
+Model yang dibangun berpotensi besar digunakan sebagai dasar dalam:
+- Menentukan intervensi akademik awal bagi siswa yang diprediksi tidak lulus.
+- Menyusun strategi pengajaran personal sesuai prediksi performa siswa.
